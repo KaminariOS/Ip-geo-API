@@ -44,15 +44,13 @@ jobs:
 
       - name: Build and push
         uses: docker/build-push-action@v6
-        env:
-          NAME: ip-geo-api
         with:
           context: .
           provenance: false
           push: true
           tags: |
-            ghcr.io/${{ secrets.REGISTRY_USERNAME }}/$NAME:latest
-            ghcr.io/${{ secrets.REGISTRY_USERNAME }}/$NAME:${{ steps.short-sha.outputs.sha }}
+            ghcr.io/${{ secrets.REGISTRY_USERNAME }}/ip-geo-api:latest
+            ghcr.io/${{ secrets.REGISTRY_USERNAME }}/ip-geo-api:${{ steps.short-sha.outputs.sha }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache,mode=max
           platforms: linux/amd64,linux/arm64,linux/arm64/v8
