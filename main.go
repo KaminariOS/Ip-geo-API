@@ -3,183 +3,142 @@ package main
 import (
 	"encoding/binary"
 	"encoding/csv"
-	"fmt"
 	"math/big"
 	"net"
 	"net/http"
-	"os"
 	"sort"
 
-	"crypto/sha256"
-	"encoding/hex"
-	"io/ioutil"
-
-	"encoding/json"
-	"io"
-
-	"path"
-
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator"
+	"github.com/guregu/null/v5"
 )
 
-type GitHubResponse struct {
-	Sha string `json:"sha"`
+type IpAddressRange struct {
+	start   *big.Int
+	end     *big.Int
+	country string
 }
 
-func downloadCsv() {
-	folderPath := "./downloads"
-	githubRepo := "sapics/ip-location-db"
+func downloadCsv() []IpAddressRange {
+	arr := []IpAddressRange{}
 
 	urls := []string{
-		fmt.Sprintf("https://cdn.jsdelivr.net/gh/%s/%s", githubRepo, "geo-whois-asn-country/geo-whois-asn-country-ipv4-num.csv"),
-		fmt.Sprintf("https://cdn.jsdelivr.net/gh/%s/%s", githubRepo, "geo-asn-country/geo-asn-country-ipv6-num.csv"),
+		"https://cdn.jsdelivr.net/gh/sapics/ip-location-db/geo-whois-asn-country/geo-whois-asn-country-ipv4-num.csv",
+		"https://cdn.jsdelivr.net/gh/sapics/ip-location-db/geo-asn-country/geo-asn-country-ipv6-num.csv",
 	}
 
-	if _, err := os.Stat(folderPath); os.IsNotExist(err) {
-		err := os.Mkdir(folderPath, 0755)
+	for _, url := range urls {
+		resp, err := http.Get(url)
 		if err != nil {
-			panic(err)
+			return arr
 		}
-	}
+		defer resp.Body.Close()
 
-	for idx := range urls {
-		file := path.Base(urls[idx])
+		r := csv.NewReader(resp.Body)
 
-		filePath := folderPath + "/" + file
-		if _, err := os.Stat(filePath); err == nil {
-			localSha, err := getSHA256(filePath)
+		for {
+			record, err := r.Read()
 			if err != nil {
-				panic(err)
+				break
 			}
-
-			remoteSha, err := getRemoteSHA256(githubRepo, file)
-			if err != nil {
-				panic(err)
+			start, ok := new(big.Int).SetString(record[0], 10)
+			if !ok {
+				continue
 			}
-
-			if localSha != remoteSha {
-				downloadFile(filePath, urls[idx])
+			end, ok := new(big.Int).SetString(record[1], 10)
+			if !ok {
+				continue
 			}
-		} else {
-			downloadFile(filePath, urls[idx])
+			arr = append(arr, IpAddressRange{start, end, record[2]})
 		}
 	}
+
+	return arr
 }
 
-func getRemoteSHA256(repo, file string) (string, error) {
-	resp, err := http.Get("https://api.github.com/repos/" + repo + "/contents/" + file)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	var gitHubResponse GitHubResponse
-	err = json.NewDecoder(resp.Body).Decode(&gitHubResponse)
-	if err != nil {
-		return "", err
-	}
-
-	return gitHubResponse.Sha, nil
+type IpAddress struct {
+	IpAddr null.String `json:"ip_addr"`
+	IpV6   null.Bool   `json:"ip_v6"`
 }
 
-func downloadFile(filePath string, url string) error {
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
+func parseIpAddress(rawIpAddr string) *IpAddress {
+	v := validator.New()
 
-	out, err := os.Create(filePath)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, resp.Body)
-	return err
-}
-
-func getSHA256(filePath string) (string, error) {
-	bytes, err := ioutil.ReadFile(filePath)
-	if err != nil {
-		return "", err
-	}
-
-	hasher := sha256.New()
-	hasher.Write(bytes)
-	hash := hex.EncodeToString(hasher.Sum(nil))
-
-	return hash, nil
-}
-
-func Ip2Int(ip net.IP) *big.Int {
-	i := big.NewInt(0)
-	i.SetBytes(ip)
-	return i
-}
-
-func ReadAndGet(fn string) []IpItem {
-	var ip_items []IpItem = []IpItem{}
-	f, _ := os.Open("./downloads" + "/" + fn)
-	r := csv.NewReader(f)
-	for {
-		record, err := r.Read()
-		if err != nil {
-			break
+	err := v.Var(rawIpAddr, "required,ip4_addr")
+	if err == nil {
+		return &IpAddress{
+			IpAddr: null.StringFrom(rawIpAddr),
+			IpV6:   null.BoolFrom(false),
 		}
-		start := new(big.Int)
-		start, _ = start.SetString(record[0], 10)
-		end := new(big.Int)
-		end, _ = end.SetString(record[1], 10)
-		ip_items = append(ip_items, IpItem{start, end, record[2]})
 	}
-	f.Close()
-	return ip_items
+
+	err = v.Var(rawIpAddr, "required,ip6_addr")
+	if err == nil {
+		return &IpAddress{
+			IpAddr: null.StringFrom(rawIpAddr),
+			IpV6:   null.BoolFrom(true),
+		}
+	}
+
+	return nil
+}
+
+type ApiResponse struct {
+	Ok      bool        `json:"ok"`
+	Country null.String `json:"country"`
+	IpAddress
 }
 
 func main() {
-	downloadCsv()
+	arr := downloadCsv()
 
-	var ip_items []IpItem = []IpItem{}
-	ip_items = append(ip_items, ReadAndGet("geo-whois-asn-country-ipv4-num.csv")...)
-	ip_items = append(ip_items, ReadAndGet("geo-asn-country-ipv6-num.csv")...)
-
-	sort.Slice(ip_items, func(i, j int) bool {
-		return ip_items[i].start.Cmp(ip_items[j].start) == -1
+	sort.Slice(arr, func(i, j int) bool {
+		return arr[i].start.Cmp(arr[j].start) == -1
 	})
 
-	router := gin.Default()
-	gin.SetMode(gin.ReleaseMode)
-	router.GET("/getIpInfo", func(c *gin.Context) {
-		addr := net.ParseIP(c.Query("addr"))
-		if addr != nil {
-			ip_num := big.NewInt(0)
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"},
+		AllowMethods:     []string{"*"},
+		AllowHeaders:     []string{},
+		AllowCredentials: true,
+	}))
 
-			if addr.To4() != nil {
-				ip_num = new(big.Int).SetUint64(uint64(binary.BigEndian.Uint32(addr.To4())))
-			} else {
-				ip_num.SetBytes(addr)
-			}
-			idx, _ := Binary(ip_items, ip_num, 0, len(ip_items))
-			if idx != -1 && ip_num.Cmp(big.NewInt(0)) != 0 {
-				c.JSON(http.StatusOK, gin.H{
-					"ok":      true,
-					"country": ip_items[idx].country,
+	r.GET("/getIpInfo", func(c *gin.Context) {
+		ipAddress := parseIpAddress(c.Query("addr"))
+
+		if ipAddress != nil && ipAddress.IpAddr.Valid {
+			addr := net.ParseIP(ipAddress.IpAddr.String)
+			if addr != nil {
+				ipNum := big.NewInt(0)
+
+				if addr.To4() != nil {
+					ipNum = new(big.Int).SetUint64(uint64(binary.BigEndian.Uint32(addr.To4())))
+				} else {
+					ipNum.SetBytes(addr)
+				}
+
+				idx := sort.Search(len(arr), func(i int) bool {
+					return arr[i].start.Cmp(ipNum) > 0
 				})
-				return
+
+				if idx > 0 && arr[idx-1].end.Cmp(ipNum) >= 0 && ipNum.Sign() != 0 {
+					c.JSON(http.StatusOK, ApiResponse{
+						Ok:        true,
+						Country:   null.StringFrom(arr[idx-1].country),
+						IpAddress: *ipAddress,
+					})
+					return
+				}
 			}
 		}
-		c.JSON(http.StatusOK, gin.H{
-			"ok": false,
+
+		c.JSON(http.StatusOK, ApiResponse{
+			Ok: false,
 		})
 	})
-	router.NoMethod(catchAll)
-	router.NoRoute(catchAll)
-	router.Run(":8080")
-}
 
-func catchAll(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"ok": false,
-	})
+	r.Run(":8080")
 }

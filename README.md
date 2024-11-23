@@ -23,7 +23,7 @@ curl localhost:8080/getIpInfo?addr=140.82.114.3
 ## Response
 
 ```json
-{ "country": "US", "ok": true }
+{ "ok": true, "country": "US", "ip_addr": "140.82.114.3", "ip_v6": false }
 ```
 
 # License
@@ -37,7 +37,5 @@ It means -
 But feel free to attribute the ip database [provider](https://opengeofeed.org/)! <3
 
 The code in this repository is licensed under the MIT License!
-
-There are some work yet to be done, like setting up github actions, but the current docker image which is hosted on docker hub is usable!
 
 # Thanks!
