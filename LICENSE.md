@@ -1,6 +1,6 @@
 # The MIT License (MIT)
 
-Copyright © `2023` `Chandan <contact@chandan.cc>`
+Copyright © `2024` `Chandan <contact@chandan.cc>`
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation

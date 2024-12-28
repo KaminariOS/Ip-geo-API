@@ -1,21 +1,18 @@
-FROM golang:1.23.1 AS builder
+FROM golang:1.23.4 AS builder
 
-RUN mkdir -p /app
 WORKDIR /app
 
-COPY go.mod .
-COPY go.sum .
-
+COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o app .
+RUN CGO_ENABLED=0 GOOS=linux go build -o server .
 
-FROM alpine
+FROM alpine:latest
 
 WORKDIR /app
 
-COPY --from=builder /app/app .
+COPY --from=builder /app/server .
 
-CMD ["/app/app"]
+CMD ["/app/server"]

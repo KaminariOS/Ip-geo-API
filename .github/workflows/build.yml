@@ -50,7 +50,6 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ secrets.REGISTRY_USERNAME }}/ip-geo-api:latest
-            ghcr.io/${{ secrets.REGISTRY_USERNAME }}/ip-geo-api:${{ steps.short-sha.outputs.sha }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache,mode=max
           platforms: linux/amd64,linux/arm64,linux/arm64/v8
