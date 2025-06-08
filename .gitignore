@@ -1,10 +1,7 @@
-*.dll
 *.env
 *.exe
 *.idea/
 *.log
-*.out
-*.so
-*build/
+*data/
 *temp/
 *tmp/
