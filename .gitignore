@@ -5,3 +5,4 @@
 *data/
 *temp/
 *tmp/
+.pre-commit-config.yaml
